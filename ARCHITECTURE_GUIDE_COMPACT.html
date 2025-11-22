@@ -1,0 +1,668 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Loan Default Hybrid System - Architecture Guide</title>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+    <style>
+      body {
+        font-family: "Segoe UI", system-ui, sans-serif;
+        max-width: 800px;
+        margin: 15px auto;
+        padding: 15px;
+        line-height: 1.5;
+        font-size: 11pt;
+      }
+      h1 {
+        color: #2c3e50;
+        font-size: 20pt;
+        border-bottom: 3px solid #3498db;
+        padding-bottom: 8px;
+        margin-top: 20px;
+        margin-bottom: 15px;
+        page-break-before: always;
+      }
+      h1:first-of-type {
+        page-break-before: avoid;
+      }
+      h2 {
+        color: #34495e;
+        font-size: 16pt;
+        border-bottom: 2px solid #95a5a6;
+        padding-bottom: 6px;
+        margin-top: 25px;
+        margin-bottom: 12px;
+        page-break-after: avoid;
+      }
+      h3 {
+        color: #7f8c8d;
+        font-size: 13pt;
+        margin-top: 18px;
+        margin-bottom: 10px;
+        page-break-after: avoid;
+      }
+      p {
+        margin: 8px 0;
+      }
+      pre {
+        background: #f5f5f5;
+        padding: 8px;
+        border-radius: 3px;
+        font-size: 9pt;
+        overflow-x: auto;
+        page-break-inside: avoid;
+      }
+      .mermaid {
+        background: white;
+        padding: 10px;
+        margin: 12px 0;
+        text-align: center;
+        page-break-inside: avoid;
+      }
+      code {
+        background: #f8f9fa;
+        padding: 2px 4px;
+        border-radius: 2px;
+        font-size: 10pt;
+        font-family: "Courier New", monospace;
+      }
+      ul,
+      ol {
+        margin: 8px 0;
+        padding-left: 20px;
+      }
+      li {
+        margin: 4px 0;
+      }
+      hr {
+        border: none;
+        border-top: 1px solid #ecf0f1;
+        margin: 20px 0;
+      }
+      strong {
+        font-weight: 600;
+      }
+      @media print {
+        body {
+          margin: 0;
+          padding: 8px;
+          font-size: 10pt;
+        }
+        h1 {
+          font-size: 18pt;
+          margin-top: 15px;
+        }
+        h2 {
+          font-size: 14pt;
+          margin-top: 20px;
+        }
+        h3 {
+          font-size: 12pt;
+          margin-top: 15px;
+        }
+        .mermaid {
+          max-width: 100%;
+          page-break-inside: avoid;
+          transform: scale(0.85);
+        }
+        pre {
+          font-size: 8pt;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Loan Default Hybrid System - Architecture Guide</h1>
+
+    <h2>System Overview</h2>
+
+    <pre class="mermaid">
+graph TB
+    Input([User Input]) --> Mode{Mode?}
+    Mode -->|Manual| Form[Input Form]
+    Mode -->|Batch| CSV[CSV Upload]
+
+    Form --> Model{Model Type}
+    CSV --> Model
+
+    Model -->|Traditional| T[Traditional<br/>487 features]
+    Model -->|Behavioral| B[Behavioral<br/>31 features]
+    Model -->|Ensemble| E[Ensemble<br/>518 features]
+
+    T --> Pred[Prediction]
+    B --> Pred
+    E --> Pred
+
+    Pred --> Risk[Risk Assessment]
+</pre>
+
+    <hr />
+
+    <h2>Model Pipelines</h2>
+
+    <h3>1. Traditional Model (Home Credit)</h3>
+    <p>
+      <strong>Input:</strong> 11 base features →
+      <strong>Process:</strong> Feature engineering →
+      <strong>Output:</strong> 487 features
+    </p>
+
+    <pre class="mermaid">
+graph LR
+    A[11 Base<br/>Features] --> B[process_apps<br/>Engineering]
+    B --> C[487<br/>Features]
+    C --> D[LightGBM<br/>Model]
+    D --> E[Prediction]
+</pre>
+    <p><strong>Base Features:</strong></p>
+
+    <ul>
+      <li>Credit scores (EXT_SOURCE_1, EXT_SOURCE_2, EXT_SOURCE_3)</li>
+      <li>
+        Loan amounts (AMT_CREDIT, AMT_INCOME_TOTAL, AMT_ANNUITY,
+        AMT_GOODS_PRICE)
+      </li>
+      <li>
+        Demographics (DAYS_BIRTH, DAYS_EMPLOYED, CNT_FAM_MEMBERS, OWN_CAR_AGE)
+      </li>
+    </ul>
+    <p>
+      <strong>Engineered Features:</strong> Ratios, aggregations, temporal
+      features, statistical metrics
+    </p>
+
+    <hr />
+
+    <h3>2. Behavioral Model (UCI Credit Card)</h3>
+    <p>
+      <strong>Input:</strong> 23 base features →
+      <strong>Process:</strong> Feature engineering →
+      <strong>Output:</strong> 31 features
+    </p>
+
+    <pre class="mermaid">
+graph LR
+    A[23 Base<br/>Features] --> B[behaviorial_features<br/>Engineering]
+    B --> C[31<br/>Features]
+    C --> D[LightGBM<br/>Model]
+    D --> E[Prediction]
+</pre>
+    <p><strong>Base Features:</strong></p>
+
+    <ul>
+      <li>Demographics: LIMIT_BAL, SEX, EDUCATION, MARRIAGE, AGE</li>
+      <li>Payment history: PAY_0, PAY_2, PAY_3, PAY_4, PAY_5, PAY_6</li>
+      <li>Bill amounts: BILL_AMT1-6</li>
+      <li>Payment amounts: PAY_AMT1-6</li>
+    </ul>
+    <p>
+      <strong>Engineered Features:</strong> Total amounts, volatility metrics,
+      payment behavior, risk indicators, trends
+    </p>
+
+    <hr />
+
+    <h3>3. Ensemble Model (Hybrid)</h3>
+    <p>
+      <strong>Input:</strong> 34 features (11 traditional + 23 behavioral) →
+      <strong>Process:</strong> Both pipelines → <strong>Output:</strong> 518
+      features
+    </p>
+
+    <pre class="mermaid">
+graph TB
+    A[34 Combined<br/>Features] --> Split{Split}
+
+    Split --> T[11 Traditional]
+    Split --> B[23 Behavioral]
+
+    T --> TE[process_apps<br/>487 features]
+    B --> BE[behaviorial_features<br/>31 features]
+
+    TE --> C[Concatenate]
+    BE --> C
+
+    C --> M[Ensemble<br/>Model]
+    M --> P[Prediction]
+</pre>
+
+    <hr />
+
+    <h2>Feature Engineering</h2>
+
+    <h3>Traditional Engineering (process_apps)</h3>
+    <p>Creates 487 features from 11 base inputs:</p>
+    <p>
+      1. <strong>Ratio Features:</strong> Credit/Income, Annuity/Credit,
+      Goods/Income 2. <strong>Aggregations:</strong> Mean/Std of external
+      sources 3. <strong>Temporal:</strong> Age calculations, employment
+      duration 4. <strong>Statistical:</strong> Min/Max/Mean across categories
+      5. <strong>Interactions:</strong> Cross-feature products, conditional
+      values
+    </p>
+
+    <h3>Behavioral Engineering (behaviorial_features)</h3>
+    <p>Creates 31 features from 23 base inputs:</p>
+    <p>
+      1. <strong>Aggregates:</strong> Total billed, total payments, average
+      transaction 2. <strong>Volatility:</strong> Spending volatility, income
+      consistency, rolling balance changes 3.
+      <strong>Payment Behavior:</strong> Consistency ratio, repayment ratio,
+      missed payments 4. <strong>Risk Indicators:</strong> Debt stress index,
+      credit utilization, spend-to-income 5. <strong>Trends:</strong> Bill
+      changes over time, credit utilization trend
+    </p>
+
+    <hr />
+
+    <h2>Data Flow</h2>
+
+    <h3>Manual Input Flow</h3>
+
+    <pre class="mermaid">
+sequenceDiagram
+    User->>Form: Enter data
+    Form->>Engine: Base features
+    Engine->>Engine: Feature engineering
+    Engine->>Model: Engineered features
+    Model->>UI: Prediction + probability
+    UI->>User: Risk assessment
+</pre
+    >
+
+    <h3>Batch Input Flow</h3>
+
+    <pre class="mermaid">
+sequenceDiagram
+    User->>System: Upload CSV
+    System->>Validator: Check features
+    Validator->>Engine: Apply engineering
+    Engine->>Model: Batch predict
+    Model->>System: Results
+    System->>User: Download CSV
+</pre
+    >
+
+    <hr />
+
+    <h2>Model Selection Logic</h2>
+
+    <pre class="mermaid">
+graph TD
+    Start[Model Name] --> Check{Name Check}
+
+    Check -->|'hybrid'| T[Traditional Type]
+    Check -->|'lgbm'| B[Behavioral Type]
+    Check -->|'ensemble'| E[Ensemble Type]
+
+    T --> TF[11 features form]
+    B --> BF[23 features form]
+    E --> EF[34 features form]
+
+    TF --> Pred[Predict]
+    BF --> Pred
+    EF --> Pred
+</pre
+    >
+
+    <hr />
+
+    <h2>Risk Classification</h2>
+
+    <pre class="mermaid">
+graph LR
+    Prob[Default<br/>Probability] --> Check{Value?}
+
+    Check -->|< 30%| Low[Low Risk]
+    Check -->|30-60%| Med[Medium Risk]
+    Check -->|> 60%| High[High Risk]
+
+    Low --> Rec1[Approve<br/>Standard Terms]
+    Med --> Rec2[Approve<br/>with Monitoring]
+    High --> Rec3[Deny or<br/>Require Collateral]
+</pre>
+    <p><strong>Risk Levels:</strong></p>
+
+    <ul>
+      <li>
+        <strong>Low Risk (<30%):</strong> Strong credit indicators, approve with
+        standard terms
+      </li>
+      <li>
+        <strong>Medium Risk (30-60%):</strong> Mixed indicators, approve with
+        careful monitoring
+      </li>
+      <li>
+        <strong>High Risk (>60%):</strong> Weak indicators, deny or require
+        additional collateral
+      </li>
+    </ul>
+
+    <hr />
+
+    <h2>System Architecture</h2>
+
+    <h3>Application Structure</h3>
+
+    <pre><code>Loan Default Hybrid System/
+├── app.py                          # Streamlit main app
+├── pages/
+│   ├── Prediction.py               # Prediction interface
+│   ├── EDA.py                      # Exploratory analysis
+│   ├── Feature_Importance.py       # Feature insights
+│   └── Model_Metrics.py            # Performance metrics
+├── apps/
+│   └── utils.py                    # Helper functions
+├── src/
+│   └── feature_engineering.py      # Feature transformations
+├── models/
+│   ├── model_hybrid.pkl            # Traditional (487)
+│   ├── first_lgbm_model.pkl        # Behavioral (31)
+│   └── model_ensemble_wrapper.pkl  # Ensemble (518)
+└── data/
+    └── [training datasets]</code></pre>
+
+    <hr />
+
+    <h2>Component Architecture</h2>
+
+    <h3>Core Components</h3>
+    <p>
+      1. <strong>Streamlit UI:</strong> Multi-page application for user
+      interaction 2. <strong>Feature Engineering:</strong> Transforms raw
+      features into model-ready data 3. <strong>Model Manager:</strong> Loads
+      and caches trained models 4. <strong>Prediction Engine:</strong> Handles
+      single and batch predictions 5. <strong>Visualization:</strong> Risk
+      gauges, probability displays, result tables
+    </p>
+
+    <h3>Data Processing Pipeline</h3>
+
+    <pre class="mermaid">
+graph LR
+    A[Raw Data] --> B[Validation]
+    B --> C[Feature<br/>Engineering]
+    C --> D[Alignment]
+    D --> E[Model]
+    E --> F[Post-<br/>processing]
+    F --> G[Display]
+</pre>
+
+    <hr />
+
+    <h2>Technology Stack</h2>
+    <p><strong>Languages & Frameworks:</strong></p>
+
+    <ul>
+      <li>Python 3.13</li>
+      <li>Streamlit (UI framework)</li>
+      <li>LightGBM (ML models)</li>
+      <li>Pandas/NumPy (data processing)</li>
+    </ul>
+    <p><strong>Key Libraries:</strong></p>
+
+    <ul>
+      <li>scikit-learn: Model utilities</li>
+      <li>plotly: Interactive visualizations</li>
+      <li>pickle: Model serialization</li>
+    </ul>
+    <p><strong>Development:</strong></p>
+
+    <ul>
+      <li>Virtual environment: myenv/</li>
+      <li>Package management: pip</li>
+      <li>Version control: Git</li>
+    </ul>
+
+    <hr />
+
+    <h2>Deployment</h2>
+
+    <h3>Local Setup</h3>
+    <p>1. Clone repository</p>
+    2. Create virtual environment: <code>python -m venv myenv</code> 3.
+    Activate: <code>myenv\Scripts\activate</code> 4. Install:
+    <code>pip install -r requirements.txt</code> 5. Run:
+    <code>streamlit run app.py</code>
+
+    <h3>Access</h3>
+
+    <ul>
+      <li>Local: http://localhost:8501</li>
+      <li>Network: http://[IP]:8501</li>
+    </ul>
+
+    <hr />
+
+    <h2>Security & Performance</h2>
+
+    <h3>Security Considerations</h3>
+
+    <ul>
+      <li>Input validation on all user data</li>
+      <li>CSV file size limits</li>
+      <li>Model file integrity checks</li>
+      <li>Error handling for malformed inputs</li>
+    </ul>
+
+    <h3>Performance Optimizations</h3>
+
+    <ul>
+      <li>Model caching with @st.cache_resource</li>
+      <li>Batch prediction optimization</li>
+      <li>Feature alignment caching</li>
+      <li>Efficient DataFrame operations</li>
+    </ul>
+
+    <h3>Error Handling</h3>
+
+    <ul>
+      <li>Graceful degradation for missing features</li>
+      <li>User-friendly error messages</li>
+      <li>Fallback values for edge cases</li>
+      <li>Logging for debugging</li>
+    </ul>
+
+    <hr />
+
+    <h2>Model Training Architecture</h2>
+
+    <h3>Training Pipeline</h3>
+
+    <pre class="mermaid">
+graph TB
+    Data[Training Data] --> Split[Train/Test Split]
+    Split --> Train[Training Set]
+    Split --> Test[Test Set]
+
+    Train --> FE[Feature<br/>Engineering]
+    FE --> Tuning[Hyperparameter<br/>Tuning]
+    Tuning --> Model[Train Model]
+
+    Model --> Val[Validate]
+    Test --> Val
+
+    Val --> Save[Save Model]
+    Save --> Deploy[Deploy to App]
+</pre>
+
+    <h3>Model Versions</h3>
+
+    <ul>
+      <li>
+        <strong>Traditional Model:</strong> Trained on Home Credit default risk
+        dataset
+      </li>
+      <li>
+        <strong>Behavioral Model:</strong> Trained on UCI credit card default
+        dataset
+      </li>
+      <li>
+        <strong>Ensemble Model:</strong> Trained on combined hybrid features
+      </li>
+    </ul>
+
+    <hr />
+
+    <h2>Key Metrics</h2>
+
+    <h3>Model Performance Indicators</h3>
+
+    <ul>
+      <li><strong>Accuracy:</strong> Overall prediction correctness</li>
+      <li>
+        <strong>Precision:</strong> True positives / (True positives + False
+        positives)
+      </li>
+      <li>
+        <strong>Recall:</strong> True positives / (True positives + False
+        negatives)
+      </li>
+      <li><strong>F1-Score:</strong> Harmonic mean of precision and recall</li>
+      <li>
+        <strong>AUC-ROC:</strong> Area under receiver operating characteristic
+        curve
+      </li>
+    </ul>
+
+    <h3>Feature Importance</h3>
+    <p>Available in Feature_Importance.py page:</p>
+
+    <ul>
+      <li>SHAP values for individual predictions</li>
+      <li>Feature contribution analysis</li>
+      <li>Top influential features visualization</li>
+    </ul>
+
+    <hr />
+
+    <h2>Usage Guidelines</h2>
+
+    <h3>Manual Input Best Practices</h3>
+
+    <ul>
+      <li>Use accurate, up-to-date information</li>
+      <li>Complete all required fields</li>
+      <li>Understand feature definitions</li>
+      <li>Consider model limitations</li>
+    </ul>
+
+    <h3>Batch Prediction Best Practices</h3>
+
+    <ul>
+      <li>Prepare CSV with correct column names</li>
+      <li>Ensure data quality and consistency</li>
+      <li>Use appropriate model for dataset type</li>
+      <li>Validate results before decisions</li>
+    </ul>
+
+    <h3>Model Selection Guidelines</h3>
+
+    <ul>
+      <li><strong>Traditional:</strong> For Home Credit-style applicants</li>
+      <li>
+        <strong>Behavioral:</strong> For credit card payment history analysis
+      </li>
+      <li>
+        <strong>Ensemble:</strong> For comprehensive risk assessment with both
+        data types
+      </li>
+    </ul>
+
+    <hr />
+
+    <h2>Troubleshooting</h2>
+
+    <h3>Common Issues</h3>
+    <p><strong>Issue:</strong> Prediction fails with feature mismatch</p>
+
+    <ul>
+      <li>
+        <strong>Solution:</strong> Ensure CSV has all required features for
+        selected model
+      </li>
+    </ul>
+    <p>
+      <strong>Issue:</strong> Low accuracy on manual input (traditional model)
+    </p>
+
+    <ul>
+      <li>
+        <strong>Solution:</strong> Use batch prediction with full dataset;
+        manual form has limited features
+      </li>
+    </ul>
+    <p><strong>Issue:</strong> Model loading errors</p>
+
+    <ul>
+      <li>
+        <strong>Solution:</strong> Check model files exist in models/ directory
+      </li>
+    </ul>
+    <p><strong>Issue:</strong> Feature engineering errors</p>
+
+    <ul>
+      <li>
+        <strong>Solution:</strong> Verify input data types and value ranges
+      </li>
+    </ul>
+
+    <hr />
+
+    <h2>Future Enhancements</h2>
+
+    <h3>Planned Features</h3>
+    <p>
+      1. <strong>Model Retraining:</strong> Automated retraining with new data
+      2. <strong>API Integration:</strong> REST API for external systems 3.
+      <strong>Real-time Monitoring:</strong> Live prediction metrics dashboard
+      4. <strong>A/B Testing:</strong> Compare model versions 5.
+      <strong>Explainability:</strong> Enhanced SHAP visualizations 6.
+      <strong>Mobile Support:</strong> Responsive design improvements
+    </p>
+
+    <h3>Model Improvements</h3>
+
+    <ul>
+      <li>Regular model updates with fresh data</li>
+      <li>Ensemble technique optimization</li>
+      <li>Feature engineering refinement</li>
+      <li>Performance benchmarking</li>
+    </ul>
+
+    <hr />
+
+    <h2>Contact & Support</h2>
+    <p>For questions, issues, or contributions:</p>
+
+    <ul>
+      <li>Review documentation in project README</li>
+      <li>Check MODEL_ARCHITECTURE_FLOWCHART.md for architecture details</li>
+      <li>Examine code comments for implementation details</li>
+      <li>Test with provided sample datasets</li>
+    </ul>
+
+    <hr />
+    <p>
+      <strong>Document Version:</strong> 2.0
+      <strong>Last Updated:</strong> November 2025
+      <strong>Maintained by:</strong> Loan Default Hybrid System Team
+
+      <script>
+        mermaid.initialize({
+          startOnLoad: true,
+          theme: "default",
+          flowchart: {
+            curve: "basis",
+            padding: 8,
+            nodeSpacing: 40,
+            rankSpacing: 40,
+          },
+          themeVariables: {
+            fontSize: "12px",
+          },
+        });
+      </script>
+    </p>
+  </body>
+</html>

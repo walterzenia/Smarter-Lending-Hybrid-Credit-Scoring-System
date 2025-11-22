@@ -1,0 +1,999 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Loan Default Hybrid System - Architecture</title>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+            line-height: 1.6;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .content {
+            background: white;
+            padding: 40px;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        h1 { color: #2c3e50; border-bottom: 3px solid #3498db; padding-bottom: 10px; }
+        h2 { color: #34495e; border-bottom: 2px solid #95a5a6; padding-bottom: 8px; margin-top: 40px; }
+        h3 { color: #7f8c8d; }
+        code {
+            background: #f8f9fa;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: 'Courier New', monospace;
+        }
+        pre {
+            background: #282c34;
+            color: #abb2bf;
+            padding: 15px;
+            border-radius: 5px;
+            overflow-x: auto;
+        }
+        .mermaid {
+            background: white;
+            padding: 20px;
+            border-radius: 5px;
+            margin: 20px 0;
+        }
+        ul, ol { padding-left: 30px; }
+        li { margin: 8px 0; }
+    </style>
+</head>
+<body>
+    <div class="content">
+        <h1>Loan Default Hybrid System - Model Architecture Flowchart
+<p>#<h1>System Overview</p>
+<pre class="mermaid">
+graph TB
+    Start([User Input]) --> Choice{Prediction Mode}
+    Choice -->|Batch| CSV[Upload CSV File]
+    Choice -->|Manual| Form[Fill Input Form]
+
+    CSV --> ModelSelect{Select Model Type}
+    Form --> ModelSelect
+
+    ModelSelect -->|Traditional| TradModel[Traditional Model<br/>model_hybrid.pkl]
+    ModelSelect -->|Behavioral| BehavModel[Behavioral Model<br/>first_lgbm_model.pkl]
+    ModelSelect -->|Ensemble| EnsModel[Ensemble Model<br/>model_ensemble_wrapper.pkl]
+
+    TradModel --> Predict[Make Prediction]
+    BehavModel --> Predict
+    EnsModel --> Predict
+
+    Predict --> Results[Display Results]
+    Results --> End([Risk Assessment])
+
+    style Start fill:#e1f5ff
+    style End fill:#c8e6c9
+    style TradModel fill:#fff9c4
+    style BehavModel fill:#f8bbd0
+    style EnsModel fill:#ce93d8
+</pre>
+<p>---</p>
+#<h1>Detailed Model Pipeline
+<p>##<h1>1. Traditional Model Pipeline (Home Credit Features)</p>
+<pre class="mermaid">
+graph LR
+    A[Raw Input<br/>11 Base Features] --> B[Feature Engineering<br/>process_apps]
+    B --> C[Engineered Data<br/>487 Features]
+    C --> D[Traditional Model<br/>LightGBM]
+    D --> E[Prediction Output<br/>Default Probability]
+
+    subgraph "Base Features"
+    A1[EXT_SOURCE 1-3<br/>Credit Scores]
+    A2[AMT_CREDIT<br/>AMT_INCOME<br/>AMT_ANNUITY]
+    A3[DAYS_BIRTH<br/>DAYS_EMPLOYED]
+    A4[CNT_FAM_MEMBERS<br/>OWN_CAR_AGE]
+    end
+
+    subgraph "Engineered Features Examples"
+    C1[Credit-to-Income Ratio]
+    C2[Mean External Score]
+    C3[Employment-to-Age Ratio]
+    C4[Payment Capacity]
+    C5[+ 483 More Features]
+    end
+
+    style A fill:#bbdefb
+    style C fill:#c5e1a5
+    style D fill:#fff59d
+    style E fill:#ffccbc
+</pre>
+<p><strong>Traditional Model Flow:</strong></p>
+1. <strong>Input</strong>: 11 base features from Home Credit dataset
+2. <strong>Processing</strong>: <code>process_apps()</code> function creates 487 engineered features
+3. <strong>Model</strong>: LightGBM trained on 487 features
+4. <strong>Output</strong>: Default probability (0-1)
+<p>---</p>
+##<h1>2. Behavioral Model Pipeline (UCI Credit Card Features)
+
+<pre class="mermaid">
+graph LR
+    A[Raw Input<br/>23 Base Features] --> B[Feature Engineering<br/>behaviorial_features]
+    B --> C[Engineered Data<br/>31 Features]
+    C --> D[Behavioral Model<br/>LightGBM]
+    D --> E[Prediction Output<br/>Default Probability]
+
+    subgraph "Base Features"
+    A1[LIMIT_BAL<br/>Credit Limit]
+    A2[Demographic<br/>SEX, EDU, MARRIAGE, AGE]
+    A3[Payment History<br/>PAY_0 to PAY_6]
+    A4[Bill Amounts<br/>BILL_AMT1-6]
+    A5[Payment Amounts<br/>PAY_AMT1-6]
+    end
+
+    subgraph "Engineered Features Examples"
+    C1[total_billed_amount]
+    C2[total_payment_amount]
+    C3[spending_volatility]
+    C4[payment_consistency_ratio]
+    C5[debt_stress_index]
+    C6[+ 8 More Features]
+    end
+
+    style A fill:#f8bbd0
+    style C fill:#c5e1a5
+    style D fill:#f48fb1
+    style E fill:#ffccbc
+</pre>
+<p><strong>Behavioral Model Flow:</strong></p>
+1. <strong>Input</strong>: 23 base features from UCI Credit Card dataset
+2. <strong>Processing</strong>: <code>behaviorial_features()</code> function creates 31 total features (23 base + 8 engineered)
+3. <strong>Model</strong>: LightGBM trained on 31 features
+4. <strong>Output</strong>: Default probability (0-1)
+<p>---</p>
+##<h1>3. Ensemble Model Pipeline (Hybrid Features)
+
+<pre class="mermaid">
+graph TB
+    Start[Raw Input<br/>Combined Features] --> Split{Split Features}
+
+    Split --> TradPath[Traditional Features<br/>11 Base]
+    Split --> BehavPath[Behavioral Features<br/>23 Base]
+
+    TradPath --> TradEng[process_apps<br/>Feature Engineering]
+    BehavPath --> BehavEng[behaviorial_features<br/>Feature Engineering]
+
+    TradEng --> TradOut[487 Traditional<br/>Features]
+    BehavEng --> BehavOut[31 Behavioral<br/>Features]
+
+    TradOut --> Combine[Concatenate<br/>Features]
+    BehavOut --> Combine
+
+    Combine --> Hybrid[Hybrid Dataset<br/>518 Total Features]
+    Hybrid --> Ensemble[Ensemble Model<br/>model_ensemble_wrapper.pkl]
+    Ensemble --> Result[Final Prediction<br/>Default Probability]
+
+    style Start fill:#e1bee7
+    style TradPath fill:#bbdefb
+    style BehavPath fill:#f8bbd0
+    style Hybrid fill:#c5e1a5
+    style Ensemble fill:#ce93d8
+    style Result fill:#ffccbc
+</pre>
+<p><strong>Ensemble Model Flow:</strong></p>
+1. <strong>Input</strong>: Combined 34 base features (11 traditional + 23 behavioral)
+2. <strong>Split</strong>: Separate features into traditional and behavioral groups
+3. <strong>Processing</strong>:
+   - Apply <code>process_apps()</code> to traditional features → 487 features
+   - Apply <code>behaviorial_features()</code> to behavioral features → 31 features
+4. <strong>Combine</strong>: Concatenate both feature sets → 518 total features
+5. <strong>Model</strong>: Ensemble LightGBM trained on hybrid features
+6. <strong>Output</strong>: Default probability (0-1)
+<p>---</p>
+#<h1>Feature Engineering Details
+<p>##<h1>Traditional Feature Engineering (<code>process_apps</code>)</p>
+<pre class="mermaid">
+graph TD
+    Input[11 Base Features] --> FE[Feature Engineering]
+
+    FE --> Cat1[Ratio Features<br/>Credit/Income<br/>Annuity/Credit]
+    FE --> Cat2[Aggregation Features<br/>Mean External Source<br/>Total Credit Products]
+    FE --> Cat3[Temporal Features<br/>Age from Birth Date<br/>Employment Duration]
+    FE --> Cat4[Statistical Features<br/>Min/Max/Mean/Std<br/>Across Categories]
+    FE --> Cat5[Interaction Features<br/>Cross-feature Products<br/>Conditional Values]
+
+    Cat1 --> Output[487 Engineered Features]
+    Cat2 --> Output
+    Cat3 --> Output
+    Cat4 --> Output
+    Cat5 --> Output
+
+    style Input fill:#bbdefb
+    style FE fill:#fff59d
+    style Output fill:#c5e1a5
+</pre>
+<p>##<h1>Behavioral Feature Engineering (<code>behaviorial_features</code>)</p>
+<pre class="mermaid">
+graph TD
+    Input[23 Base Features] --> FE[Feature Engineering]
+
+    FE --> Cat1[Financial Aggregates<br/>Total Billed Amount<br/>Total Payment Amount<br/>Avg Transaction]
+    FE --> Cat2[Volatility Metrics<br/>Spending Volatility<br/>Rolling Balance<br/>Income Consistency]
+    FE --> Cat3[Payment Behavior<br/>Payment Consistency<br/>Repayment Ratio<br/>Missed Payment Count]
+    FE --> Cat4[Risk Indicators<br/>Debt Stress Index<br/>Credit Utilization<br/>Spend-to-Income Ratio]
+    FE --> Cat5[Trend Features<br/>Bill Changes (1-2, 3-4, 4-5)<br/>Credit Utilization Trend]
+
+    Cat1 --> Output[31 Total Features<br/>23 Base + 8 Engineered]
+    Cat2 --> Output
+    Cat3 --> Output
+    Cat4 --> Output
+    Cat5 --> Output
+
+    style Input fill:#f8bbd0
+    style FE fill:#f48fb1
+    style Output fill:#c5e1a5
+</pre>
+<p>---</p>
+#<h1>Data Flow Architecture
+<p>##<h1>Manual Input (Single Applicant)</p>
+<pre class="mermaid">
+sequenceDiagram
+    participant U as User
+    participant F as Input Form
+    participant FE as Feature Engineering
+    participant M as Model
+    participant R as Results Display
+
+    U->>F: Fill Applicant Details
+    F->>FE: Submit Base Features
+
+    alt Traditional Model
+        FE->>FE: process_apps(11 features)
+        FE->>M: Send 487 features
+    else Behavioral Model
+        FE->>FE: behaviorial_features(23 features)
+        FE->>M: Send 31 features
+    else Ensemble Model
+        FE->>FE: process_apps(11) + behaviorial_features(23)
+        FE->>M: Send 518 features
+    end
+
+    M->>M: LightGBM Prediction
+    M->>R: Return Probability
+    R->>U: Display Risk Assessment
+</pre>
+<p>##<h1>Batch Input (CSV Upload)</p>
+<pre class="mermaid">
+sequenceDiagram
+    participant U as User
+    participant CSV as CSV File
+    participant P as Preprocessor
+    participant M as Model
+    participant R as Results Export
+
+    U->>CSV: Upload Dataset
+    CSV->>P: Load Data (N rows)
+    P->>P: Validate Features
+
+    alt Features Already Engineered
+        P->>M: Pass Data Directly
+    else Raw Features
+        P->>P: Apply Feature Engineering
+        P->>M: Send Engineered Features
+    end
+
+    M->>M: Batch Predictions (N rows)
+    M->>R: Return N Probabilities
+    R->>U: Download Predictions CSV
+</pre>
+<p>---</p>
+#<h1>Model Selection Logic
+
+<pre class="mermaid">
+graph TD
+    Start([Model Selection]) --> Check{Check Model Name}
+
+    Check -->|Contains 'hybrid'| Trad[Traditional Model Type]
+    Check -->|Contains 'lgbm'| Behav[Behavioral Model Type]
+    Check -->|Contains 'ensemble'| Ens[Ensemble Model Type]
+
+    Trad --> TradForm[Show Traditional Form<br/>11 Base Features]
+    Behav --> BehavForm[Show Behavioral Form<br/>23 Base Features]
+    Ens --> EnsForm[Show Hybrid Form<br/>34 Combined Features]
+
+    TradForm --> TradFE[Apply process_apps]
+    BehavForm --> BehavFE[Apply behaviorial_features]
+    EnsForm --> EnsFE[Apply Both Functions]
+
+    TradFE --> Predict[Make Prediction]
+    BehavFE --> Predict
+    EnsFE --> Predict
+
+    style Start fill:#e1f5ff
+    style Trad fill:#fff9c4
+    style Behav fill:#f8bbd0
+    style Ens fill:#ce93d8
+    style Predict fill:#c8e6c9
+</pre>
+<p>---</p>
+#<h1>Risk Classification Pipeline
+
+<pre class="mermaid">
+graph LR
+    A[Model Output<br/>Probability 0-1] --> B{Classify Risk}
+
+    B -->|< 0.3| Low[Low Risk<br/>Approve Standard]
+    B -->|0.3 - 0.6| Med[Medium Risk<br/>Approve with Monitoring]
+    B -->|> 0.6| High[High Risk<br/>Deny/Require Collateral]
+
+    Low --> Display[Display Results]
+    Med --> Display
+    High --> Display
+<p>    Display --> Viz[Risk Visualization]</p>
+    Viz --> G1[Gauge Chart]
+    Viz --> G2[Progress Bar]
+    Viz --> G3[Risk Metrics]
+
+    style A fill:#e1f5ff
+    style Low fill:#c8e6c9
+    style Med fill:#fff9c4
+    style High fill:#ffccbc
+    style Display fill:#e1bee7
+</pre>
+<p>---</p>
+#<h1>Feature Count Summary
+
+| Model Type      | Base Features | Engineered Features | Total Features |
+| --------------- | ------------- | ------------------- | -------------- |
+| <strong>Traditional</strong> | 11            | 476                 | <strong>487</strong>        |
+| <strong>Behavioral</strong>  | 23            | 8                   | <strong>31</strong>         |
+| <strong>Ensemble</strong>    | 34 (11+23)    | 484 (476+8)         | <strong>518</strong>        |
+<p>---</p>
+#<h1>Key Engineering Functions
+<p>##<h1>Traditional: <code>process_apps(df)</code></p>
+<pre><code>Input:  11 base features
+        ├── EXT_SOURCE_1, EXT_SOURCE_2, EXT_SOURCE_3
+        ├── AMT_CREDIT, AMT_INCOME_TOTAL, AMT_ANNUITY, AMT_GOODS_PRICE
+        ├── DAYS_BIRTH, DAYS_EMPLOYED
+        └── CNT_FAM_MEMBERS, OWN_CAR_AGE
+
+Output: 487 engineered features
+        ├── Original 11 features
+        ├── 476 calculated features:
+            ├── Ratios (credit/income, annuity/income, etc.)
+            ├── Aggregations (mean, sum, max, min)
+            ├── Statistical (std, variance, percentiles)
+            └── Interactions (cross-products, conditionals)</code></pre>
+<p>##<h1>Behavioral: <code>behaviorial_features(df)</code></p>
+<pre><code>Input:  23 base features
+        ├── LIMIT_BAL, SEX, EDUCATION, MARRIAGE, AGE
+        ├── PAY_0, PAY_2, PAY_3, PAY_4, PAY_5, PAY_6
+        ├── BILL_AMT1-6 (6 features)
+        └── PAY_AMT1-6 (6 features)
+
+Output: 31 features (23 base + 8 engineered)
+        ├── Original 23 features
+        ├── 8 calculated features:
+            ├── total_billed_amount
+            ├── total_payment_amount
+            ├── avg_transaction_amount
+            ├── spending_volatility
+            ├── payment_consistency_ratio
+            ├── debt_stress_index
+            ├── credit_utilization_trend
+            └── missed_payment_count (+ others)</code></pre>
+<p>---</p>
+#<h1>Model Training Architecture
+
+<pre class="mermaid">
+graph TB
+    subgraph "Training Phase (Offline)"
+        T1[Historical Data] --> T2[Feature Engineering]
+        T2 --> T3[Train-Test Split]
+        T3 --> T4[LightGBM Training]
+        T4 --> T5[Save Model .pkl]
+    end
+
+    subgraph "Inference Phase (Runtime)"
+        I1[New Applicant Data] --> I2[Feature Engineering]
+        I2 --> I3[Load Model .pkl]
+        I3 --> I4[Predict]
+        I4 --> I5[Return Probability]
+    end
+<p>    T5 -.Model Files.-> I3</p>
+    style T1 fill:#e1f5ff
+    style T5 fill:#c8e6c9
+    style I1 fill:#fff9c4
+    style I5 fill:#ffccbc
+</pre>
+<p>---</p>
+#<h1>System Architecture Overview
+
+<pre class="mermaid">
+graph TB
+    subgraph "Frontend Layer"
+        UI[Streamlit UI<br/>app.py]
+        Pages[Pages<br/>Prediction.py<br/>EDA.py<br/>Model_Metrics.py]
+    end
+
+    subgraph "Business Logic Layer"
+        Utils[Utilities<br/>apps/utils.py]
+        FE[Feature Engineering<br/>src/feature_engineering.py]
+    end
+
+    subgraph "Model Layer"
+        M1[model_hybrid.pkl<br/>487 features]
+        M2[first_lgbm_model.pkl<br/>31 features]
+        M3[model_ensemble_wrapper.pkl<br/>518 features]
+    end
+
+    subgraph "Data Layer"
+        D1[CSV Files]
+        D2[Manual Input]
+    end
+
+    UI --> Pages
+    Pages --> Utils
+    Utils --> FE
+    FE --> M1
+    FE --> M2
+    FE --> M3
+    D1 --> Pages
+    D2 --> Pages
+
+    style UI fill:#e1f5ff
+    style Utils fill:#fff9c4
+    style FE fill:#c5e1a5
+    style M1 fill:#fff59d
+    style M2 fill:#f48fb1
+    style M3 fill:#ce93d8
+</pre>
+<p>---</p>
+---
+<p>#<h1>Complete System Architecture</p>
+##<h1>Full Application Structure
+
+<pre class="mermaid">
+graph TB
+    subgraph "Presentation Layer (Streamlit)"
+        App[app.py<br/>Main Entry Point]
+        Home[Home.py<br/>Landing Page]
+        Pred[Prediction.py<br/>Risk Assessment]
+        EDA[EDA.py<br/>Data Analysis]
+        FI[Feature_Importance.py<br/>Model Insights]
+        MM[Model_Metrics.py<br/>Performance]
+    end
+
+    subgraph "Business Logic Layer"
+        Utils[apps/utils.py<br/>Model Loading<br/>Predictions<br/>Visualizations]
+        FE[src/feature_engineering.py<br/>process_apps()<br/>behaviorial_features()]
+    end
+
+    subgraph "Model Layer"
+        M1[models/model_hybrid.pkl<br/>Traditional LightGBM]
+        M2[models/first_lgbm_model.pkl<br/>Behavioral LightGBM]
+        M3[models/model_ensemble_wrapper.pkl<br/>Ensemble Model]
+    end
+
+    subgraph "Data Layer"
+        TrainData[Training Data<br/>smoke_engineered.csv<br/>uci_interface_test.csv]
+        TestData[Test Data<br/>smoke_hybrid_features.csv]
+        UserData[User Uploads<br/>CSV Files]
+    end
+
+    subgraph "Configuration"
+        Env[Environment<br/>myenv/<br/>Python 3.13]
+        Req[Dependencies<br/>requirements.txt]
+    end
+
+    App --> Home
+    App --> Pred
+    App --> EDA
+    App --> FI
+    App --> MM
+
+    Pred --> Utils
+    EDA --> Utils
+    FI --> Utils
+    MM --> Utils
+
+    Utils --> FE
+    Utils --> M1
+    Utils --> M2
+    Utils --> M3
+
+    FE --> TrainData
+    M1 --> TrainData
+    M2 --> TrainData
+    M3 --> TrainData
+
+    UserData --> Pred
+    TestData --> Pred
+
+    Env --> App
+    Req --> Env
+
+    style App fill:#4fc3f7
+    style Utils fill:#fff59d
+    style FE fill:#aed581
+    style M1 fill:#ffb74d
+    style M2 fill:#f06292
+    style M3 fill:#ba68c8
+</pre>
+<p>---</p>
+#<h1>Detailed Component Architecture
+<p>##<h1>1. Frontend Components (Streamlit Pages)</p>
+<pre class="mermaid">
+graph LR
+    subgraph "Navigation"
+        Nav[Sidebar Navigation]
+    end
+
+    subgraph "Home Page"
+        H1[System Overview]
+        H2[Model Selection Guide]
+        H3[Quick Start]
+    end
+
+    subgraph "Prediction Page"
+        P1[Model Selector]
+        P2[Input Mode Selector]
+        P3[Manual Input Form]
+        P4[CSV Upload]
+        P5[Results Display]
+        P6[Risk Visualization]
+    end
+
+    subgraph "EDA Page"
+        E1[Data Upload]
+        E2[Statistical Summary]
+        E3[Distribution Plots]
+        E4[Correlation Matrix]
+        E5[Feature Analysis]
+    end
+
+    subgraph "Feature Importance"
+        F1[Model Selector]
+        F2[SHAP Values]
+        F3[Feature Rankings]
+        F4[Interactive Plots]
+    end
+
+    subgraph "Model Metrics"
+        M1[Performance Metrics]
+        M2[Confusion Matrix]
+        M3[ROC Curve]
+        M4[Precision-Recall]
+    end
+
+    Nav --> H1
+    Nav --> P1
+    Nav --> E1
+    Nav --> F1
+    Nav --> M1
+
+    style Nav fill:#4fc3f7
+    style P1 fill:#fff59d
+    style E1 fill:#aed581
+    style F1 fill:#ffb74d
+    style M1 fill:#f06292
+</pre>
+<p>---</p>
+##<h1>2. Business Logic Components
+
+<pre class="mermaid">
+graph TB
+    subgraph "apps/utils.py - Core Functions"
+        U1[load_model<br/>Load .pkl files]
+        U2[get_available_models<br/>Scan models/ directory]
+        U3[get_model_type<br/>Identify model category]
+        U4[get_predictions<br/>Make predictions]
+        U5[align_features<br/>Match model schema]
+        U6[classify_risk<br/>Risk categorization]
+        U7[plot_gauge<br/>Visualization]
+    end
+
+    subgraph "src/feature_engineering.py"
+        FE1[process_apps<br/>Traditional Engineering<br/>11 → 487 features]
+        FE2[behaviorial_features<br/>Behavioral Engineering<br/>23 → 31 features]
+        FE3[Helper Functions<br/>Aggregations<br/>Calculations]
+    end
+
+    U4 --> U5
+    U5 --> U1
+    U4 --> FE1
+    U4 --> FE2
+    FE1 --> FE3
+    FE2 --> FE3
+
+    style U1 fill:#4fc3f7
+    style U4 fill:#fff59d
+    style FE1 fill:#aed581
+    style FE2 fill:#f06292
+</pre>
+<p>---</p>
+##<h1>3. File Structure Tree
+
+<pre><code>Loan Default Hybrid System/
+│
+├── app.py                          <h1>Main Streamlit application
+├── requirement.txt                 <h1>Python dependencies
+├── MODEL_ARCHITECTURE_FLOWCHART.md <h1>This documentation
+├── DATA_FLOW_EXPLANATION.md        <h1>Data flow docs
+│
+├── myenv/                          <h1>Virtual environment
+│   ├── Scripts/                       <h1>Python executables
+│   └── Lib/                           <h1>Installed packages
+│
+├── pages/                          <h1>Streamlit pages
+│   ├── Prediction.py                  <h1>Main prediction interface
+│   ├── EDA.py                         <h1>Exploratory data analysis
+│   ├── Feature_Importance.py          <h1>Feature importance plots
+│   └── Model_Metrics.py               <h1>Model performance metrics
+│
+├── apps/                           <h1>Business logic
+│   └── utils.py                       <h1>Core utility functions
+│
+├── src/                            <h1>Source code
+│   └── feature_engineering.py         <h1>Feature engineering functions
+│
+├── models/                         <h1>Trained models
+│   ├── model_hybrid.pkl               <h1>Traditional model (487 features)
+│   ├── first_lgbm_model.pkl           <h1>Behavioral model (31 features)
+│   └── model_ensemble_wrapper.pkl     <h1>Ensemble model (518 features)
+│
+└── data/ (optional)                <h1>Training/test data
+    ├── smoke_engineered.csv           <h1>Traditional features
+    ├── uci_interface_test.csv         <h1>Behavioral features
+    └── smoke_hybrid_features.csv      <h1>Hybrid features</code></pre>
+<p>---</p>
+##<h1>4. Technology Stack
+
+<pre class="mermaid">
+graph TB
+    subgraph "Frontend"
+        ST[Streamlit 1.x<br/>Web Framework]
+        PL[Plotly<br/>Interactive Visualizations]
+    end
+
+    subgraph "Data Processing"
+        PD[Pandas<br/>Data Manipulation]
+        NP[NumPy<br/>Numerical Computing]
+    end
+
+    subgraph "Machine Learning"
+        LGB[LightGBM<br/>Gradient Boosting]
+        SK[Scikit-learn<br/>ML Utilities]
+    end
+
+    subgraph "Interpretability"
+        SH[SHAP<br/>Model Explanations]
+    end
+
+    subgraph "Runtime"
+        PY[Python 3.13<br/>Core Runtime]
+        VE[Virtual Environment<br/>myenv]
+    end
+
+    ST --> PL
+    ST --> PD
+    PD --> NP
+    LGB --> SK
+    SK --> PD
+    SH --> LGB
+
+    PY --> ST
+    PY --> PD
+    PY --> LGB
+    VE --> PY
+
+    style ST fill:#4fc3f7
+    style LGB fill:#ffb74d
+    style PD fill:#aed581
+    style PY fill:#f06292
+</pre>
+<p><strong>Key Dependencies:</strong></p>
+<ul>
+<li><strong>Streamlit</strong>: Web application framework</li>
+<li><strong>LightGBM</strong>: Gradient boosting model</li>
+<li><strong>Pandas</strong>: Data manipulation</li>
+<li><strong>NumPy</strong>: Numerical operations</li>
+<li><strong>Plotly</strong>: Interactive visualizations</li>
+<li><strong>SHAP</strong>: Model interpretability</li>
+<li><strong>Scikit-learn</strong>: ML utilities</li>
+</ul>
+<p>---</p>
+##<h1>5. Request-Response Flow
+
+<pre class="mermaid">
+sequenceDiagram
+    actor User
+    participant UI as Streamlit UI
+    participant Page as Prediction Page
+    participant Utils as apps/utils.py
+    participant FE as Feature Engineering
+    participant Model as LightGBM Model
+
+    User->>UI: Access Application
+    UI->>Page: Navigate to Prediction
+
+    Page->>Utils: get_available_models()
+    Utils->>Page: Return [model1, model2, model3]
+    Page->>User: Show Model Selection
+
+    User->>Page: Select Model & Input Data
+    Page->>Utils: get_model_type(model_name)
+    Utils->>Page: Return 'traditional'/'behavioral'/'ensemble'
+
+    alt Manual Input
+        Page->>Page: Display Model-Specific Form
+        User->>Page: Fill Form (11/23/34 features)
+    else CSV Upload
+        User->>Page: Upload CSV File
+        Page->>Page: Load CSV with Pandas
+    end
+<p>    Page->>FE: Apply Feature Engineering</p>
+    alt Traditional
+        FE->>FE: process_apps(11 features)
+        FE->>Page: Return 487 features
+    else Behavioral
+        FE->>FE: behaviorial_features(23 features)
+        FE->>Page: Return 31 features
+    else Ensemble
+        FE->>FE: process_apps + behaviorial_features
+        FE->>Page: Return 518 features
+    end
+
+    Page->>Utils: get_predictions(model, data)
+    Utils->>Utils: load_model(model_path)
+    Utils->>Utils: align_features(data, model)
+    Utils->>Model: model.predict(X)
+    Model->>Utils: Return probabilities
+    Utils->>Page: Return [predictions, probabilities]
+
+    Page->>Utils: classify_risk(probability)
+    Utils->>Page: Return risk_level
+
+    Page->>Utils: plot_gauge(probability)
+    Utils->>Page: Return plotly_figure
+
+    Page->>User: Display Results + Visualization
+</pre>
+<p>---</p>
+##<h1>6. Data Flow Through System
+
+<pre class="mermaid">
+graph TB
+    subgraph "Input Sources"
+        I1[Manual Form Input]
+        I2[CSV File Upload]
+    end
+
+    subgraph "Data Validation"
+        V1[Check Required Fields]
+        V2[Validate Data Types]
+        V3[Check Value Ranges]
+    end
+
+    subgraph "Feature Engineering Pipeline"
+        FE1{Model Type?}
+        FE2[Traditional Pipeline<br/>11 → 487]
+        FE3[Behavioral Pipeline<br/>23 → 31]
+        FE4[Hybrid Pipeline<br/>34 → 518]
+    end
+
+    subgraph "Model Inference"
+        M1[Load Model]
+        M2[Align Features]
+        M3[Predict]
+        M4[Calculate Probabilities]
+    end
+
+    subgraph "Post-Processing"
+        P1[Risk Classification]
+        P2[Generate Visualizations]
+        P3[Format Results]
+    end
+
+    subgraph "Output"
+        O1[Display Results]
+        O2[Download CSV]
+        O3[Show Charts]
+    end
+
+    I1 --> V1
+    I2 --> V1
+    V1 --> V2
+    V2 --> V3
+    V3 --> FE1
+
+    FE1 -->|Traditional| FE2
+    FE1 -->|Behavioral| FE3
+    FE1 -->|Ensemble| FE4
+
+    FE2 --> M1
+    FE3 --> M1
+    FE4 --> M1
+
+    M1 --> M2
+    M2 --> M3
+    M3 --> M4
+
+    M4 --> P1
+    P1 --> P2
+    P2 --> P3
+
+    P3 --> O1
+    P3 --> O2
+    P3 --> O3
+
+    style I1 fill:#e1f5ff
+    style FE1 fill:#fff59d
+    style M3 fill:#ffb74d
+    style O1 fill:#c8e6c9
+</pre>
+<p>---</p>
+##<h1>7. Model Loading & Caching Strategy
+
+<pre class="mermaid">
+graph TB
+    Start[User Selects Model] --> Cache{Model in<br/>Streamlit Cache?}
+
+    Cache -->|Yes| LoadCache[Load from Cache]
+    Cache -->|No| LoadDisk[Load from Disk]
+
+    LoadDisk --> Unpickle[Unpickle .pkl file]
+    Unpickle --> Store[Store in st.cache]
+    Store --> Return[Return Model]
+<p>    LoadCache --> Return</p>
+    Return --> Ready[Model Ready<br/>for Inference]
+
+    style Cache fill:#fff59d
+    style Store fill:#aed581
+    style Ready fill:#c8e6c9
+</pre>
+<p><strong>Caching Benefits:</strong></p>
+<ul>
+<li>Models loaded once per session</li>
+<li>Faster subsequent predictions</li>
+<li>Reduced memory overhead</li>
+<li>Better user experience</li>
+</ul>
+<p>---</p>
+##<h1>8. Error Handling & Validation
+
+<pre class="mermaid">
+graph TB
+    Input[User Input] --> V1{Valid Format?}
+
+    V1 -->|No| E1[Show Format Error]
+    V1 -->|Yes| V2{Required Features?}
+
+    V2 -->|No| E2[Show Missing Features]
+    V2 -->|Yes| V3{Value Ranges Valid?}
+
+    V3 -->|No| E3[Show Range Error]
+    V3 -->|Yes| Process[Process Data]
+
+    Process --> V4{Engineering Success?}
+    V4 -->|No| E4[Show Engineering Error]
+    V4 -->|Yes| Predict[Make Prediction]
+
+    Predict --> V5{Prediction Success?}
+    V5 -->|No| E5[Show Model Error]
+    V5 -->|Yes| Success[Display Results]
+
+    E1 --> End[Error Message to User]
+    E2 --> End
+    E3 --> End
+    E4 --> End
+    E5 --> End
+
+    style V1 fill:#fff59d
+    style Success fill:#c8e6c9
+    style End fill:#ffccbc
+</pre>
+<p>---</p>
+##<h1>9. Deployment Architecture (Production Ready)
+
+<pre class="mermaid">
+graph TB
+    subgraph "Client Layer"
+        Browser[Web Browser]
+    end
+
+    subgraph "Web Server"
+        Streamlit[Streamlit Server<br/>Port 8501]
+    end
+
+    subgraph "Application Layer"
+        App[Python Application<br/>app.py]
+        Pages[Page Modules]
+        Utils[Utility Functions]
+    end
+
+    subgraph "ML Layer"
+        Models[Serialized Models<br/>.pkl files]
+        FE[Feature Engineering<br/>Functions]
+    end
+
+    subgraph "Data Storage"
+        Local[Local CSV Files]
+        Upload[User Uploads<br/>Temp Storage]
+    end
+
+    Browser -->|HTTP| Streamlit
+    Streamlit -->|WSGI| App
+    App --> Pages
+    Pages --> Utils
+    Utils --> Models
+    Utils --> FE
+    FE --> Local
+    Pages --> Upload
+
+    style Browser fill:#e1f5ff
+    style Streamlit fill:#4fc3f7
+    style Models fill:#ffb74d
+    style Local fill:#aed581
+</pre>
+<p><strong>Deployment Options:</strong></p>
+<ul>
+<li><strong>Local</strong>: <code>streamlit run app.py</code></li>
+<li><strong>Cloud</strong>: Streamlit Community Cloud, Heroku, AWS, Azure</li>
+<li><strong>Docker</strong>: Containerized deployment</li>
+<li><strong>Requirements</strong>: Python 3.13, ~500MB models, 2GB RAM minimum</li>
+</ul>
+<p>---</p>
+##<h1>10. Security & Performance Considerations
+
+<pre class="mermaid">
+graph LR
+    subgraph "Security"
+        S1[Input Validation]
+        S2[File Type Checking]
+        S3[Size Limits]
+        S4[No Data Persistence]
+    end
+
+    subgraph "Performance"
+        P1[Model Caching]
+        P2[Lazy Loading]
+        P3[Batch Processing]
+        P4[Memory Management]
+    end
+
+    subgraph "Reliability"
+        R1[Error Handling]
+        R2[Fallback Values]
+        R3[Logging]
+        R4[User Feedback]
+    end
+
+    style S1 fill:#ffccbc
+    style P1 fill:#aed581
+    style R1 fill:#fff59d
+</pre>
+<p>---</p>
+#<h1>Summary
+<p>This hybrid system provides three specialized models:</p>
+1. <strong>Traditional Model</strong>: Deep feature engineering from 11 base features → 487 features
+2. <strong>Behavioral Model</strong>: Payment pattern analysis from 23 base features → 31 features
+3. <strong>Ensemble Model</strong>: Combined approach using both feature sets → 518 features
+<p>Each model uses LightGBM for predictions and returns a probability (0-1) representing default risk, which is then classified into Low/Medium/High risk categories for actionable insights.</p>
+##<h1>System Highlights:
+
+<ul>
+<li><strong>Modular Architecture</strong>: Clean separation of concerns (UI, Logic, Models, Data)</li>
+<li><strong>Scalable Design</strong>: Easy to add new models or features</li>
+<li><strong>User-Friendly</strong>: Streamlit provides intuitive interface</li>
+<li><strong>Production-Ready</strong>: Error handling, caching, validation</li>
+<li><strong>Well-Documented</strong>: Comprehensive flowcharts and architecture diagrams</li>
+</ul>
+
+    </div>
+    <script>
+        mermaid.initialize({ 
+            startOnLoad: true,
+            theme: 'default',
+            flowchart: { curve: 'basis' }
+        });
+    </script>
+</body>
+</html>
